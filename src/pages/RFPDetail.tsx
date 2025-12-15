@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,27 +19,64 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { MatchBadge } from '@/components/common/MatchBadge';
-import { mockRFPs, mockLineItems, mockMaterialPricing, mockTestServices, mockPipelineSteps } from '@/data/mockData';
+import { useApp } from '@/context/AppContext';
+import { mockMaterialPricing, mockTestServices, mockLineItems as defaultLineItems, mockPipelineSteps as defaultPipelineSteps } from '@/data/mockData';
 import { LineItem, PipelineStep } from '@/types';
-import { Play, FileText, Cog, DollarSign, Check, Loader2, Clock, AlertCircle, Download, Eye } from 'lucide-react';
+import { Play, FileText, Cog, DollarSign, Check, Loader2, Clock, AlertCircle, Download, Eye, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 export default function RFPDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { toast } = useToast();
+  const { 
+    rfps, 
+    pipelineSteps, 
+    lineItems,
+    runFullPipeline, 
+    runSalesAgent, 
+    runTechnicalAgent, 
+    runPricingAgent,
+    runningPipelines 
+  } = useApp();
+  
   const [selectedLineItem, setSelectedLineItem] = useState<LineItem | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [runningAgent, setRunningAgent] = useState<string | null>(null);
 
-  const rfp = mockRFPs.find((r) => r.id === id) || mockRFPs[1];
+  const rfp = rfps.find((r) => r.id === id) || rfps[0];
+  const currentPipelineSteps = pipelineSteps[rfp?.id] || defaultPipelineSteps;
+  const currentLineItems = lineItems[rfp?.id] || defaultLineItems;
+  const isRunningPipeline = runningPipelines.has(rfp?.id);
 
-  const handleRunPipeline = (type: string) => {
+  const handleRunPipeline = async () => {
+    toast({
+      title: 'Full Pipeline Started',
+      description: `Running all agents for RFP #${rfp.id}`,
+    });
+    await runFullPipeline(rfp.id);
+    toast({
+      title: 'Pipeline Complete',
+      description: 'All agents have finished processing.',
+    });
+  };
+
+  const handleRunSingleAgent = async (type: string, runFn: (id: string) => Promise<void>) => {
+    setRunningAgent(type);
     toast({
       title: `${type} Started`,
       description: `Running ${type.toLowerCase()} for RFP #${rfp.id}`,
+    });
+    await runFn(rfp.id);
+    setRunningAgent(null);
+    toast({
+      title: `${type} Complete`,
+      description: `${type} has finished processing.`,
     });
   };
 
@@ -53,6 +90,12 @@ export default function RFPDetail() {
       title: 'Exporting PDF',
       description: 'Generating response document...',
     });
+    setTimeout(() => {
+      toast({
+        title: 'Export Complete',
+        description: 'PDF has been downloaded.',
+      });
+    }, 1500);
   };
 
   const getStepIcon = (step: PipelineStep) => {
@@ -72,15 +115,42 @@ export default function RFPDetail() {
   const totalTests = mockTestServices.reduce((sum, item) => sum + item.cost, 0);
   const grandTotal = totalMaterial + totalTests;
 
-  // Calculate spec match stats
-  const above90 = mockLineItems.filter((item) => item.matchPercentage >= 90).length;
-  const between80and90 = mockLineItems.filter((item) => item.matchPercentage >= 80 && item.matchPercentage < 90).length;
-  const below80 = mockLineItems.filter((item) => item.matchPercentage < 80).length;
-  const avgMatch = Math.round(mockLineItems.reduce((sum, item) => sum + item.matchPercentage, 0) / mockLineItems.length);
+  // Calculate spec match stats from current line items
+  const specMatchStats = useMemo(() => {
+    const above90 = currentLineItems.filter((item) => item.matchPercentage >= 90).length;
+    const between80and90 = currentLineItems.filter((item) => item.matchPercentage >= 80 && item.matchPercentage < 90).length;
+    const below80 = currentLineItems.filter((item) => item.matchPercentage < 80).length;
+    const avgMatch = currentLineItems.length > 0 
+      ? Math.round(currentLineItems.reduce((sum, item) => sum + item.matchPercentage, 0) / currentLineItems.length)
+      : 0;
+    return { above90, between80and90, below80, avgMatch };
+  }, [currentLineItems]);
+
+  if (!rfp) {
+    return (
+      <AppLayout title="RFP Not Found">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-muted-foreground">The requested RFP could not be found.</p>
+            <Button variant="outline" className="mt-4" onClick={() => navigate('/rfp-explorer')}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to RFP Explorer
+            </Button>
+          </CardContent>
+        </Card>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout title={`RFP #${rfp.id}`}>
       <div className="space-y-6">
+        {/* Back button */}
+        <Button variant="ghost" size="sm" onClick={() => navigate('/rfp-explorer')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Explorer
+        </Button>
+
         {/* Header Section */}
         <Card>
           <CardContent className="p-6">
@@ -97,20 +167,48 @@ export default function RFPDetail() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => handleRunPipeline('Full Agent Pipeline')}>
-                  <Play className="mr-2 h-4 w-4" />
-                  Run Full Pipeline
+                <Button onClick={handleRunPipeline} disabled={isRunningPipeline}>
+                  {isRunningPipeline ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="mr-2 h-4 w-4" />
+                  )}
+                  {isRunningPipeline ? 'Running...' : 'Run Full Pipeline'}
                 </Button>
-                <Button variant="outline" onClick={() => handleRunPipeline('Sales Scan')}>
-                  <FileText className="mr-2 h-4 w-4" />
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleRunSingleAgent('Sales Scan', runSalesAgent)}
+                  disabled={runningAgent === 'Sales Scan' || isRunningPipeline}
+                >
+                  {runningAgent === 'Sales Scan' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-2 h-4 w-4" />
+                  )}
                   Sales Scan
                 </Button>
-                <Button variant="outline" onClick={() => handleRunPipeline('Technical SpecMatch')}>
-                  <Cog className="mr-2 h-4 w-4" />
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleRunSingleAgent('Technical SpecMatch', runTechnicalAgent)}
+                  disabled={runningAgent === 'Technical SpecMatch' || isRunningPipeline}
+                >
+                  {runningAgent === 'Technical SpecMatch' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Cog className="mr-2 h-4 w-4" />
+                  )}
                   SpecMatch
                 </Button>
-                <Button variant="outline" onClick={() => handleRunPipeline('Pricing')}>
-                  <DollarSign className="mr-2 h-4 w-4" />
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleRunSingleAgent('Pricing', runPricingAgent)}
+                  disabled={runningAgent === 'Pricing' || isRunningPipeline}
+                >
+                  {runningAgent === 'Pricing' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <DollarSign className="mr-2 h-4 w-4" />
+                  )}
                   Pricing
                 </Button>
               </div>
@@ -136,14 +234,14 @@ export default function RFPDetail() {
                 <CardContent className="space-y-4">
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-1">Scope</h4>
-                    <p className="text-sm">{rfp.scope}</p>
+                    <p className="text-sm">{rfp.scope || 'No scope defined yet.'}</p>
                   </div>
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-1">Key Requirements</h4>
                     <ul className="list-disc list-inside text-sm space-y-1">
                       {rfp.requirements?.map((req, i) => (
                         <li key={i}>{req}</li>
-                      ))}
+                      )) || <li className="text-muted-foreground">No requirements extracted yet.</li>}
                     </ul>
                   </div>
                 </CardContent>
@@ -160,7 +258,9 @@ export default function RFPDetail() {
                         <div className="h-2 w-2 rounded-full bg-primary" />
                         {product}
                       </li>
-                    ))}
+                    )) || (
+                      <li className="text-sm text-muted-foreground">No products identified yet. Run the Technical Agent to extract products.</li>
+                    )}
                   </ul>
                 </CardContent>
               </Card>
@@ -176,7 +276,7 @@ export default function RFPDetail() {
                 <div className="relative">
                   <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-border" />
                   <div className="space-y-6">
-                    {mockPipelineSteps.map((step, i) => (
+                    {currentPipelineSteps.map((step, i) => (
                       <div key={i} className="relative flex gap-4">
                         <div className={cn(
                           "z-10 flex h-12 w-12 items-center justify-center rounded-full border-2",
@@ -188,7 +288,7 @@ export default function RFPDetail() {
                           {getStepIcon(step)}
                         </div>
                         <div className="flex-1 pt-1">
-                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                             <h4 className="font-medium">{step.name}</h4>
                             <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">{step.agent}</span>
                           </div>
@@ -214,25 +314,25 @@ export default function RFPDetail() {
               <Card>
                 <CardContent className="p-4 text-center">
                   <p className="text-sm text-muted-foreground">Average Match</p>
-                  <p className="text-3xl font-bold text-primary">{avgMatch}%</p>
+                  <p className="text-3xl font-bold text-primary">{specMatchStats.avgMatch}%</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4 text-center">
                   <p className="text-sm text-muted-foreground">Total Line Items</p>
-                  <p className="text-3xl font-bold">{mockLineItems.length}</p>
+                  <p className="text-3xl font-bold">{currentLineItems.length}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4 text-center">
                   <p className="text-sm text-muted-foreground">Match ≥90%</p>
-                  <p className="text-3xl font-bold text-green-600">{above90}</p>
+                  <p className="text-3xl font-bold text-green-600">{specMatchStats.above90}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4 text-center">
                   <p className="text-sm text-muted-foreground">Match &lt;80%</p>
-                  <p className="text-3xl font-bold text-red-600">{below80}</p>
+                  <p className="text-3xl font-bold text-red-600">{specMatchStats.below80}</p>
                 </CardContent>
               </Card>
             </div>
@@ -253,7 +353,7 @@ export default function RFPDetail() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockLineItems.map((item) => (
+                    {currentLineItems.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="font-mono text-sm">{item.recommendedSku}</TableCell>

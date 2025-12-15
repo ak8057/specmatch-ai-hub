@@ -30,21 +30,25 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { mockDataSources } from '@/data/mockData';
-import { Plus, Pencil, Trash2, ExternalLink } from 'lucide-react';
+import { useApp } from '@/context/AppContext';
+import { Plus, Pencil, Trash2, ExternalLink, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
 export default function Settings() {
   const { toast } = useToast();
-  const [autoScan, setAutoScan] = useState(true);
-  const [autoTechnical, setAutoTechnical] = useState(true);
-  const [autoPricing, setAutoPricing] = useState(false);
-  const [defaultMarkup, setDefaultMarkup] = useState('15');
-  const [currency, setCurrency] = useState('INR');
+  const { settings, updateSettings, dataSources, addDataSource, removeDataSource } = useApp();
   const [isAddSourceOpen, setIsAddSourceOpen] = useState(false);
+  const [isEditSourceOpen, setIsEditSourceOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<string | null>(null);
+  const [newSource, setNewSource] = useState({ name: '', url: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
+    setIsSaving(true);
+    // Simulate save delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+    setIsSaving(false);
     toast({
       title: 'Settings Saved',
       description: 'Your preferences have been updated.',
@@ -53,7 +57,14 @@ export default function Settings() {
 
   const handleAddSource = (e: React.FormEvent) => {
     e.preventDefault();
+    addDataSource({
+      name: newSource.name,
+      url: newSource.url,
+      status: 'Active',
+      lastScanned: new Date().toISOString(),
+    });
     setIsAddSourceOpen(false);
+    setNewSource({ name: '', url: '' });
     toast({
       title: 'Data Source Added',
       description: 'New URL has been added to scan list.',
@@ -61,9 +72,18 @@ export default function Settings() {
   };
 
   const handleDeleteSource = (id: string) => {
+    removeDataSource(id);
     toast({
       title: 'Data Source Removed',
       description: 'URL has been removed from scan list.',
+    });
+  };
+
+  const handleToggle = (key: keyof typeof settings, value: boolean) => {
+    updateSettings({ [key]: value });
+    toast({
+      title: 'Setting Updated',
+      description: `${key.replace(/([A-Z])/g, ' $1').trim()} has been ${value ? 'enabled' : 'disabled'}.`,
     });
   };
 
@@ -84,7 +104,11 @@ export default function Settings() {
                   Automatically scan configured tender portals for new RFPs
                 </p>
               </div>
-              <Switch id="auto-scan" checked={autoScan} onCheckedChange={setAutoScan} />
+              <Switch 
+                id="auto-scan" 
+                checked={settings.autoScan} 
+                onCheckedChange={(checked) => handleToggle('autoScan', checked)} 
+              />
             </div>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
@@ -93,7 +117,11 @@ export default function Settings() {
                   Automatically start SpecMatch analysis when new RFPs are discovered
                 </p>
               </div>
-              <Switch id="auto-technical" checked={autoTechnical} onCheckedChange={setAutoTechnical} />
+              <Switch 
+                id="auto-technical" 
+                checked={settings.autoTechnical} 
+                onCheckedChange={(checked) => handleToggle('autoTechnical', checked)} 
+              />
             </div>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
@@ -102,7 +130,11 @@ export default function Settings() {
                   Automatically calculate pricing after technical matching completes
                 </p>
               </div>
-              <Switch id="auto-pricing" checked={autoPricing} onCheckedChange={setAutoPricing} />
+              <Switch 
+                id="auto-pricing" 
+                checked={settings.autoPricing} 
+                onCheckedChange={(checked) => handleToggle('autoPricing', checked)} 
+              />
             </div>
           </CardContent>
         </Card>
@@ -113,7 +145,7 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base">Data Sources</CardTitle>
-                <CardDescription>URLs monitored for RFP discovery</CardDescription>
+                <CardDescription>URLs monitored for RFP discovery ({dataSources.length} sources)</CardDescription>
               </div>
               <Dialog open={isAddSourceOpen} onOpenChange={setIsAddSourceOpen}>
                 <DialogTrigger asChild>
@@ -132,11 +164,24 @@ export default function Settings() {
                   <form onSubmit={handleAddSource} className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="source-name">Source Name</Label>
-                      <Input id="source-name" placeholder="e.g., Government e-Marketplace" required />
+                      <Input 
+                        id="source-name" 
+                        placeholder="e.g., Government e-Marketplace" 
+                        required 
+                        value={newSource.name}
+                        onChange={(e) => setNewSource(prev => ({ ...prev, name: e.target.value }))}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="source-url">URL</Label>
-                      <Input id="source-url" type="url" placeholder="https://example.gov.in/tenders" required />
+                      <Input 
+                        id="source-url" 
+                        type="url" 
+                        placeholder="https://example.gov.in/tenders" 
+                        required 
+                        value={newSource.url}
+                        onChange={(e) => setNewSource(prev => ({ ...prev, url: e.target.value }))}
+                      />
                     </div>
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => setIsAddSourceOpen(false)}>
@@ -161,46 +206,54 @@ export default function Settings() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockDataSources.map((source) => (
-                  <TableRow key={source.id}>
-                    <TableCell className="font-medium">{source.name}</TableCell>
-                    <TableCell>
-                      <a
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline flex items-center gap-1"
-                      >
-                        {source.url.replace('https://', '')}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </TableCell>
-                    <TableCell>
-                      {source.lastScanned
-                        ? format(new Date(source.lastScanned), 'MMM dd, HH:mm')
-                        : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        status={source.status === 'Active' ? 'In Progress' : 'Completed'}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteSource(source.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                {dataSources.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      No data sources configured. Add a source to start scanning.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  dataSources.map((source) => (
+                    <TableRow key={source.id}>
+                      <TableCell className="font-medium">{source.name}</TableCell>
+                      <TableCell>
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline flex items-center gap-1"
+                        >
+                          {source.url.replace('https://', '').substring(0, 30)}...
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </TableCell>
+                      <TableCell>
+                        {source.lastScanned
+                          ? format(new Date(source.lastScanned), 'MMM dd, HH:mm')
+                          : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          status={source.status === 'Active' ? 'In Progress' : 'Completed'}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="icon">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteSource(source.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -219,15 +272,18 @@ export default function Settings() {
                 <Input
                   id="markup"
                   type="number"
-                  value={defaultMarkup}
-                  onChange={(e) => setDefaultMarkup(e.target.value)}
+                  value={settings.defaultMarkup}
+                  onChange={(e) => updateSettings({ defaultMarkup: e.target.value })}
                   min="0"
                   max="100"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="currency">Currency</Label>
-                <Select value={currency} onValueChange={setCurrency}>
+                <Select 
+                  value={settings.currency} 
+                  onValueChange={(value) => updateSettings({ currency: value })}
+                >
                   <SelectTrigger id="currency">
                     <SelectValue />
                   </SelectTrigger>
@@ -239,7 +295,16 @@ export default function Settings() {
                 </Select>
               </div>
             </div>
-            <Button onClick={handleSaveSettings}>Save Changes</Button>
+            <Button onClick={handleSaveSettings} disabled={isSaving}>
+              {isSaving ? (
+                <>Saving...</>
+              ) : (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Save Changes
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
       </div>

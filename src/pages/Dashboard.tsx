@@ -2,27 +2,38 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { KPICard } from '@/components/common/KPICard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { dashboardStats, weeklyRFPData, recentActivity } from '@/data/mockData';
-import { FileText, Clock, Gauge, Target, Radar, ArrowRight } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApp } from '@/context/AppContext';
+import { weeklyRFPData } from '@/data/mockData';
+import { FileText, Clock, Gauge, Target, Radar, ArrowRight, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { dashboardStats, recentActivity, scanForRFPs, isScanning } = useApp();
 
-  const handleScanForRFPs = () => {
+  const handleScanForRFPs = async () => {
     toast({
       title: 'Scanning for new RFPs...',
       description: 'The Sales Agent is scanning configured tender portals.',
     });
-    setTimeout(() => {
+    
+    try {
+      const newRFPs = await scanForRFPs();
       toast({
         title: 'Scan Complete',
-        description: 'Found 2 new RFPs matching your criteria.',
+        description: `Found ${newRFPs.length} new RFP(s) matching your criteria.`,
       });
-    }, 2000);
+    } catch (error) {
+      toast({
+        title: 'Scan Failed',
+        description: 'Could not complete the scan. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -131,32 +142,36 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentActivity.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/50"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <FileText className="h-5 w-5 text-primary" />
+                {recentActivity.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No recent activity</p>
+                ) : (
+                  recentActivity.slice(0, 5).map((activity) => (
+                    <div
+                      key={activity.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/50"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <FileText className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">RFP #{activity.rfpId} processed</p>
+                          <p className="text-sm text-muted-foreground">{activity.message}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-foreground">RFP #{activity.rfpId} processed</p>
-                        <p className="text-sm text-muted-foreground">{activity.message}</p>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm text-muted-foreground">{activity.time}</span>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => navigate(`/rfp/${activity.rfpId}`)}
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-muted-foreground">{activity.time}</span>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => navigate(`/rfp/${activity.rfpId}`)}
-                      >
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -167,9 +182,18 @@ export default function Dashboard() {
               <CardDescription>Trigger agent workflows</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button onClick={handleScanForRFPs} className="w-full" size="lg">
-                <Radar className="mr-2 h-5 w-5" />
-                Scan for New RFPs
+              <Button 
+                onClick={handleScanForRFPs} 
+                className="w-full" 
+                size="lg"
+                disabled={isScanning}
+              >
+                {isScanning ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  <Radar className="mr-2 h-5 w-5" />
+                )}
+                {isScanning ? 'Scanning...' : 'Scan for New RFPs'}
               </Button>
               <Button 
                 variant="outline" 

@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { KPICard } from '@/components/common/KPICard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useApp } from '@/context/AppContext';
 import { monthlyAnalytics, weeklyRFPData } from '@/data/mockData';
 import { FileText, Target, Clock, Edit, Bot } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -21,6 +22,8 @@ const monthlyTrend = [
 ];
 
 export default function Reports() {
+  const { dashboardStats } = useApp();
+  
   return (
     <AppLayout title="Reports & Analytics">
       <div className="space-y-6">
