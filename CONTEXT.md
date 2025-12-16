@@ -1,198 +1,256 @@
 # Context: SpecMatch AI Hub
 
-> This document provides 100% of the context needed to modify this codebase. Do NOT read source files unless making edits. All architecture, message protocols, storage schemas, and error patterns are documented below.
+This document provides the complete technical context for the SpecMatch AI Hub codebase. It covers architecture, data flow, file responsibilities, and the project structure.
 
 ---
 
 ## 1. Project Identity
+
 | Key | Value |
 |-----|-------|
-| **Name** | SpecMatch AI Hub |
-| **Version** | 1.0.0 (Hackathon Presentation Release) |
-| **Type** | Agentic AI Orchestration Platform (B2B SaaS) |
-| **Goal** | Automate industrial RFP responses using specialized AI agents (Sales, Technical, Pricing) |
+| Name | SpecMatch AI Hub |
+| Version | 1.0.0 |
+| Type | Agentic AI Orchestration Platform |
+| Goal | Automate industrial RFP responses using specialized AI agents |
 
 ---
 
-## 2. Core Philosophy & Architecture
+## 2. System Architecture
 
-The solution replaces slow, manual waterfall workflows with a **Master Agent** coordinating multiple specialized AI agents.
+The platform uses a Master Agent to coordinate multiple specialized AI worker agents. This architecture enables parallel execution and replaces traditional sequential handoffs.
 
-### High-Level Architecture (The "Vision")
-1.  **Master Agent (Orchestration)**: Coordinates Sales, Technical, and Pricing agents using LangGraph state (Simulated in Demo).
-2.  **Sales Agent (Discovery)**: Scans portals and alerts on high-value RFPs (Simulated via `upload_tender`).
-3.  **Technical Agent (Hybrid SpecMatch)**: 
-    *   **Semantic Retrieval**: GPT-4o + SBERT (Simulated).
-    *   **Deterministic Rules**: Hard constraints (Implemented in `demo_specmatch_stub.py`).
-4.  **Pricing Agent (Commercial)**: Maps SKUs to PostgreSQL cost tables (Implemented via SQLite in Demo).
-
-### High-Level Agentic Architecture
 ```mermaid
 graph TD
-    User((User/Sales)) -->|Uploads RFP| Master[Master Agent<br/>(LangGraph Orchestrator)]
-    Master -->|Delegates| Sales[Sales Agent<br/>(Tender Discovery)]
-    Master -->|Delegates| Tech[Technical Agent<br/>(Hybrid SpecMatch)]
-    Master -->|Delegates| Price[Pricing Agent<br/>(Commercial Logic)]
-    
-    Tech -->|Semantic Search| VectorDB[(Vector DB)]
-    Tech -->|Rules| RulesEngine{Deterministic Engine}
-    
-    Price -->|Lookup| SQL[(PostgreSQL/Pricing)]
-    
-    Tech -->|Low Confidence| Human((Engineer))
-    Human -->|Validate| Tech
-    
-    Price -->|Draft| Commercial((Comm. Team))
-    Commercial -->|Approve| Master
-    
-    Master -->|Final Output| Proposal[PDF Proposal]
+    subgraph Orchestration
+        Master[Master Agent]
+    end
+
+    subgraph Worker Agents
+        Sales[Sales Agent]
+        Tech[Technical Agent]
+        Pricing[Pricing Agent]
+    end
+
+    subgraph Data Stores
+        VectorDB[(Knowledge Base)]
+        PricingDB[(Pricing Database)]
+        AuditLog[(Audit Log)]
+    end
+
+    subgraph Human Checkpoints
+        Engineer((Engineer))
+        Commercial((Commercial Team))
+    end
+
+    Master --> Sales
+    Master --> Tech
+    Master --> Pricing
+
+    Sales --> Master
+    Tech --> VectorDB
+    Tech --> Engineer
+    Engineer --> Tech
+    Tech --> Master
+
+    Pricing --> PricingDB
+    Pricing --> Commercial
+    Commercial --> Pricing
+    Pricing --> Master
+
+    Master --> AuditLog
 ```
 
-### Demo Implementation Map
-| Architecture Component | Demo Equivalent (Codebase) |
-|------------------------|---------------------------|
-| **Master Agent** | `backend/main.py` (API Gateway & State Manager) |
-| **Technical Agent** | `backend/demo_specmatch_stub.py` |
-| **Knowledge Base** | `backend/sample-data/specmatch-mapping.json` (Mock Vector DB) |
-| **Pricing DB** | `backend/demo.db` (SQLite) & `backend/sql/seed_pricing.sql` |
-| **Sales Dashboard** | `frontend/src/pages/DemoWalkthrough.tsx` |
+### Agent Responsibilities
+
+| Agent | Responsibility | Demo Implementation |
+|-------|----------------|---------------------|
+| Master Agent | Workflow state management, task delegation, audit logging | `backend/main.py` |
+| Sales Agent | Tender discovery, relevance filtering, priority scoring | Simulated via file upload endpoint |
+| Technical Agent | Hybrid SpecMatch (semantic + deterministic), confidence scoring | `backend/demo_specmatch_stub.py` |
+| Pricing Agent | SKU-to-cost mapping, margin calculation | Logic in `backend/main.py`, data from SQLite |
 
 ---
 
-## 3. End-to-End Demo Flow (Alignment with Enterprise Plan)
-
-
-### 1. Document Ingestion (Plan Sections 1-3)
-*   **Enterprise Goal**: Automated portal scanning and PDF parsing.
-*   **Demo Simulation**: User manually triggers the "Sales Agent" by uploading the **Professional RFP PDF** (`sample-tender.pdf`).
-*   **Code**: `POST /tenders/upload` calls `DemoSpecMatchStub.process_pdf`.
-
-### 2. Hybrid SpecMatch Engine (Plan Sections 4-5)
-*   **Enterprise Goal**: Semantic Embedding + Deterministic Rules.
-*   **Demo Simulation**: The **Stub** (`backend/demo_specmatch_stub.py`) acts as the Technical Agent. It uses a "Knowledge Base" (`specmatch-mapping.json`) to return mathematically precise matches (simulating GenAI) and hard-coded rules (simulating Deterministic Engine).
-*   **Confidence Framework**: The system strictly implements the confidence logic (Green > 0.8, Yellow < 0.8) as requested in Section 4.3.
-
-### 3. Orchestration & Human-in-the-Loop (Plan Sections 6-8)
-*   **Enterprise Goal**: Workflow states (Discovered -> Validated -> Pricing).
-*   **Demo Simulation**: The Frontend Dashboard moves the `Task` through these exact states.
-*   **User Exp**: The "Reviewer View" (Section 8.2) is the main UI where engineers validate low-confidence items.
-
-### 4. Output & Audit (Plan Sections 9-13)
-*   **Enterprise Goal**: Traceability logs and Client-ready PDF.
-*   **Demo Simulation**: The backend generates a timestamped Audit Log (stored in SQLite) and physically creates a downloadable proposal file in `demo-output/` containing the exact line items and pricing logic.
-
----
-
-## 4. File Structure & Responsibilities
+## 3. Data Flow
 
 ```mermaid
-flowchart TB
-    subgraph BACKEND["BACKEND (FastAPI - Port 8000)"]
-        direction TB
-        api["main.py<br/>(Master Agent / API)"]
-        stub["demo_specmatch_stub.py<br/>(Technical Agent Stub)"]
-        db["demo.db<br/>(Pricing & Audit Log)"]
-        mapping["sample-data/mapping.json<br/>(Knowledge Base)"]
-        
-        api -->|"delegates to"| stub
-        stub <-->|"reads"| mapping
-        api <-->|"reads/writes"| db
-    end
-    
-    subgraph FRONTEND["FRONTEND (React - Port 3000)"]
-        direction TB
-        app["App.tsx<br/>(Router)"]
-        demo["pages/DemoWalkthrough.tsx<br/>(Dashboard)"]
-        
-        app -->|"routes"| demo
-    end
-    
-    demo <-->|"HTTP/JSON"| api
-    
-    style BACKEND fill:#e8f4f8,stroke:#1a73e8
-    style FRONTEND fill:#fef7e0,stroke:#f9ab00
-    style api fill:#fff,stroke:#1a73e8
-    style demo fill:#fff,stroke:#f9ab00
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant MasterAgent as Master Agent (main.py)
+    participant TechAgent as Technical Agent (stub)
+    participant DB as SQLite (demo.db)
+    participant FileSystem as demo-output/
+
+    User->>Frontend: Upload PDF
+    Frontend->>MasterAgent: POST /tenders/upload
+    MasterAgent->>TechAgent: process_pdf()
+    TechAgent-->>MasterAgent: SKU matches with confidence scores
+    MasterAgent->>DB: save_task(), log_action()
+    MasterAgent-->>Frontend: Task response with matches
+
+    User->>Frontend: Click Validate
+    Frontend->>MasterAgent: POST /tasks/{id}/validate
+    MasterAgent->>DB: update task, log_action()
+    MasterAgent-->>Frontend: Success
+
+    User->>Frontend: Click Generate Proposal
+    Frontend->>MasterAgent: POST /tasks/{id}/generate-proposal
+    MasterAgent->>DB: get pricing data
+    MasterAgent->>FileSystem: Write proposal file
+    MasterAgent->>DB: log_action()
+    MasterAgent-->>Frontend: Proposal with download URL
 ```
 
-### Key Files
-*   **`backend/main.py`**: The entry point. Handles the "Master Agent" coordination logic.
-*   **`backend/demo_specmatch_stub.py`**: The "Brain" of the demo. Deterministically simulates complex AI matching logic using `specmatch-mapping.json`.
-*   **`backend/db_utils.py`**: Handles SQLite interactions for persistent audit logs and pricing lookups.
+---
+
+## 4. API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Returns system status and mode |
+| GET | `/api/version` | Returns API version |
+| POST | `/tenders/upload` | Accepts PDF file, triggers SpecMatch processing |
+| GET | `/tasks` | Returns all tasks with status and results |
+| GET | `/tasks/{task_id}` | Returns a specific task |
+| POST | `/tasks/{task_id}/validate` | Validates a low-confidence match |
+| POST | `/tasks/{task_id}/generate-proposal` | Generates proposal file with pricing |
+| GET | `/export/download/{filename}` | Downloads a generated proposal file |
 
 ---
 
-## 5. Critical Constants & Configuration
+## 5. Key Configuration
 
-### `backend/demo_specmatch_stub.py`
-```python
-# Simulated delay to make the demo feel realistic (Network/Processing lag)
-time.sleep(1.5) 
+### Environment Variables
 
-# Threshold for "green" vs "yellow" confidence in Frontend UI
-CONFIDENCE_THRESHOLD = 0.8
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEMO_MODE` | Enables deterministic stub logic | `true` |
+| `VITE_API_URL` | Backend API URL for frontend | `http://localhost:8000` |
+
+### Confidence Threshold
+
+The system uses a confidence threshold of `0.8` to determine which matches require human validation.
+
+*   `confidence >= 0.8`: Auto-approved (displayed in green)
+*   `confidence < 0.8`: Requires validation (displayed in yellow)
+
+---
+
+## 6. Project Structure
+
 ```
-
-### Environment Variables (.env)
-*   `DEMO_MODE=true`: Forces backend to use Stubs instead of real LLM calls.
-*   `DATABASE_URL`: (Optional) Can override default SQLite `demo.db` with Postgres.
-
----
-
----
-
-## 6. Project Directory Structure
-
-```markdown
 specmatch-ai-hub/
-├── CONTEXT.md                  # Project Architecture, Philosophy, and Compliance Map
-├── README.md                   # Quick Start Guide
-├── demo-instructions.md        # Step-by-step Demo Script for Judges
-├── run_all.sh                  # Execution Script (Starts Backend + Frontend)
-├── docker-compose.yml          # Container Orchestration (Services: backend, frontend)
-├── backend/                    # [Master Agent] Logic & State Management
-│   ├── Dockerfile
-│   ├── main.py                 # Master Agent / API Gateway (FastAPI)
-│   ├── demo_specmatch_stub.py  # [Technical Agent] Hybrid Engine Simulation (Stub)
-│   ├── db_utils.py             # [Pricing Agent] SQLite Database Helper
-│   ├── requirements.txt
-│   ├── demo-output/            # Generated Proposal Artifacts
-│   │   └── demo.gif            # Demo recording/preview
-│   ├── sample-data/            # [Knowledge Base]
-│   │   ├── specmatch-mapping.json # Deterministic "Vector DB" for matching
-│   │   ├── sample-tender.pdf   # Professional RFP Sample
-│   │   └── generate_sample_pdf.py # Script to regenerate the sample PDF
+├── CONTEXT.md                          # Technical documentation (this file)
+├── README.md                           # User guide and setup instructions
+├── run_all.sh                          # Script to start backend and frontend
+├── docker-compose.yml                  # Container orchestration configuration
+├── .env.example                        # Example environment variables
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      # GitHub Actions CI pipeline
+│
+├── backend/                            # FastAPI Backend Service
+│   ├── Dockerfile                      # Container image definition
+│   ├── main.py                         # Master Agent: API Gateway and State Manager
+│   ├── demo_specmatch_stub.py          # Technical Agent: Hybrid SpecMatch Engine (Stub)
+│   ├── db_utils.py                     # Database utilities for SQLite operations
+│   ├── requirements.txt                # Python dependencies
+│   ├── demo-output/                    # Generated proposal files
+│   │   └── demo.gif                    # Demo recording
+│   ├── sample-data/                    # Knowledge Base and Sample Data
+│   │   ├── specmatch-mapping.json      # Deterministic SKU matching rules
+│   │   ├── sample-tender.pdf           # Sample RFP document for testing
+│   │   └── generate_sample_pdf.py      # Script to regenerate sample PDF
 │   ├── sql/
-│   │   └── seed_pricing.sql    # Pricing Reference Data
+│   │   └── seed_pricing.sql            # Pricing reference data schema
 │   └── tests/
-│       └── test_backend.py     # End-to-End Flow Validation
-├── frontend/                   # [Sales Dashboard] React + Vite UI
-│   ├── Dockerfile
-│   ├── src/
-│   │   ├── App.tsx             # Main Router
-│   │   ├── main.tsx
-│   │   ├── pages/
-│   │   │   ├── DemoWalkthrough.tsx # [Critical] Main Demo UI (Upload -> Validate -> Price)
-│   │   │   ├── Dashboard.tsx
-│   │   │   └── Login.tsx
-│   │   ├── components/
-│   │   │   ├── common/         # Shared UI components
-│   │   │   └── ui/             # Shadcn/UI primitive components
-│   │   ├── hooks/              # Custom React Hooks
-│   │   └── lib/                # Utilities
-│   ├── public/
-│   └── ... (Config files: package.json, vite.config.ts, etc.)
+│       └── test_backend.py             # End-to-end API tests
+│
+├── frontend/                           # React Frontend Application
+│   ├── Dockerfile                      # Container image definition
+│   ├── nginx.conf                      # Nginx configuration for serving static files
+│   ├── index.html                      # HTML entry point
+│   ├── package.json                    # Node.js dependencies
+│   ├── package-lock.json               # Dependency lock file
+│   ├── bun.lockb                       # Bun package manager lock file
+│   ├── vite.config.ts                  # Vite bundler configuration
+│   ├── tailwind.config.ts              # Tailwind CSS configuration
+│   ├── postcss.config.js               # PostCSS configuration
+│   ├── tsconfig.json                   # TypeScript configuration
+│   ├── tsconfig.app.json               # TypeScript configuration for app
+│   ├── tsconfig.node.json              # TypeScript configuration for Node
+│   ├── eslint.config.js                # ESLint configuration
+│   ├── components.json                 # Shadcn/UI components configuration
+│   ├── public/                         # Static assets
+│   │   ├── favicon.ico                 # Browser tab icon
+│   │   ├── placeholder.svg             # Placeholder image
+│   │   └── robots.txt                  # Search engine directives
+│   └── src/                            # Application source code
+│       ├── main.tsx                    # React entry point
+│       ├── App.tsx                     # Root component and router
+│       ├── App.css                     # Global styles
+│       ├── index.css                   # Tailwind base styles
+│       ├── vite-env.d.ts               # Vite type definitions
+│       ├── pages/                      # Page components
+│       │   ├── DemoWalkthrough.tsx     # Main demo UI: Upload, Validate, Price
+│       │   ├── Dashboard.tsx           # Dashboard overview
+│       │   ├── AgentConsole.tsx        # Agent activity console
+│       │   ├── RFPExplorer.tsx         # RFP listing and exploration
+│       │   ├── RFPDetail.tsx           # RFP detail view
+│       │   ├── Reports.tsx             # Reporting interface
+│       │   ├── Settings.tsx            # Application settings
+│       │   ├── Login.tsx               # Authentication page
+│       │   ├── Index.tsx               # Landing page
+│       │   └── NotFound.tsx            # 404 error page
+│       ├── components/                 # Reusable components
+│       │   ├── NavLink.tsx             # Navigation link component
+│       │   ├── common/                 # Common UI components
+│       │   ├── layout/                 # Layout components
+│       │   └── ui/                     # Shadcn/UI primitive components
+│       ├── context/
+│       │   └── AppContext.tsx          # Application state context
+│       ├── data/
+│       │   └── mockData.ts             # Mock data for development
+│       ├── hooks/                      # Custom React hooks
+│       │   ├── use-mobile.tsx          # Mobile detection hook
+│       │   ├── use-toast.ts            # Toast notification hook
+│       │   └── useTableControls.ts     # Table filtering and sorting hook
+│       ├── lib/
+│       │   └── utils.ts                # Utility functions
+│       └── types/
+│           └── index.ts                # TypeScript type definitions
 ```
 
 ---
 
-## 7. Testing & Verification
+## 7. Testing
 
-### Backend Tests (Pytest)
+### Backend Tests
+
+The backend includes pytest-based tests that validate the complete workflow.
+
 ```bash
 cd backend
 pytest
 ```
-*   **`test_end_to_end_demo_flow`**: Runs the full lifecycle: Upload -> Match -> Validate -> Price -> file export.
+
+**Test Coverage:**
+
+| Test | Description |
+|------|-------------|
+| `test_health` | Verifies the health endpoint returns correct status |
+| `test_api_version` | Verifies the API version endpoint |
+| `test_end_to_end_demo_flow` | Validates upload, validation, and proposal generation |
 
 ---
+
+## 8. Demo Mode
+
+When `DEMO_MODE=true`, the system operates without external API calls:
+
+*   The Technical Agent uses `specmatch-mapping.json` instead of calling an LLM or vector database.
+*   All outputs are deterministic and reproducible.
+*   No API keys are required.
+
+This ensures reliable demonstrations without dependency on external services.
