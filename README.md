@@ -192,12 +192,10 @@ specmatch-ai-hub/
 - Persisted workspaces (local storage or cloud)
 - Accessibility and keyboard-first operations
 
-## Screenshots / Demo
+## Demo
 
-- Add a short GIF or screenshots here to showcase the core flow:
-  - Inputting a Source Spec
-  - Adding candidates
-  - Viewing ranked matches and diffs
+![Demo](demo.gif)
+
 
 ## Troubleshooting
 
