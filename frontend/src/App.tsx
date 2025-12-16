@@ -12,6 +12,7 @@ import AgentConsole from "./pages/AgentConsole";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import DemoWalkthrough from "./pages/DemoWalkthrough";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/agent-console" element={<AgentConsole />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/demo-walkthrough" element={<DemoWalkthrough />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

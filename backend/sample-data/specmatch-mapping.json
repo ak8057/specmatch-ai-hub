@@ -1,0 +1,33 @@
+[
+    {
+        "filename": "industrial-pump-rfp.pdf",
+        "matches": [
+            {
+                "sku": "PUMP-2000-X",
+                "name": "High Pressure Industrial Pump X-Series",
+                "confidence": 0.95,
+                "reason": "Exact match on pressure rating (2000 PSI) and material (Stainless Steel).",
+                "category": "Pumps"
+            },
+            {
+                "sku": "PUMP-2000-Y-ECO",
+                "name": "Eco-Friendly Pump Y-Series",
+                "confidence": 0.72,
+                "reason": "Matches pressure rating but differs in power consumption spec.",
+                "category": "Pumps"
+            },
+            {
+                "sku": "VALVE-ISO-9001",
+                "name": "ISO 9001 Compliance Valve",
+                "confidence": 0.98,
+                "reason": "Mandatory compliance item found in section 4.2.",
+                "category": "Values"
+            }
+        ],
+        "extracted_metadata": {
+            "client": "Acme Corp",
+            "project": "New Plant Expansion",
+            "deadline": "2023-12-31"
+        }
+    }
+]
