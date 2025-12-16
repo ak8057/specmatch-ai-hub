@@ -4,3 +4,4 @@ python-multipart>=0.0.5
 pydantic>=1.8.0
 pytest>=6.0.0
 requests>=2.26.0
+fpdf>=1.7.2

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // Simple API wrapper
@@ -23,6 +23,7 @@ interface Task {
     pricing?: {
         total_value: number;
         download_url: string;
+        generated_at?: string;
     };
 }
 
@@ -33,7 +34,7 @@ export default function DemoWalkthrough() {
     const [margin, setMargin] = useState(15);
 
     // Step 1: Upload
-    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleUpload = async (e: ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.[0]) return;
         setUploading(true);
         const formData = new FormData();
@@ -200,10 +201,8 @@ export default function DemoWalkthrough() {
                                     <h3 className="font-bold text-lg">Proposal Summary</h3>
                                     <span className="text-green-400 font-mono text-xl">${task.pricing.total_value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                 </div>
-                                <div className="text-sm text-slate-400 mb-4">
-                                    Generated at: {new Date(task.pricing.generated_at!).toLocaleString()}
-                                </div>
-                                <a href="#" className="block w-full text-center bg-white text-slate-900 hover:bg-slate-100 font-bold py-2 rounded transition-colors">
+                                Generated at: {task.pricing.generated_at ? new Date(task.pricing.generated_at).toLocaleString() : 'Just now'}
+                                <a href={`${API_BASE}${task.pricing.download_url}`} target="_blank" rel="noreferrer" className="block w-full text-center bg-white text-slate-900 hover:bg-slate-100 font-bold py-2 rounded transition-colors">
                                     ⇩ Download PDF Proposal
                                 </a>
                             </div>
@@ -211,6 +210,6 @@ export default function DemoWalkthrough() {
                     </section>
                 </>
             )}
-        </div>
+        </div >
     );
 }
